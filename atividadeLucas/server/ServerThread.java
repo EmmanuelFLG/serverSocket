@@ -1,58 +1,99 @@
 package atividadeLucas.server;
 
-import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.net.Socket;
 import java.util.Map;
-import java.util.Scanner;
-import java.util.Set;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class ServerThread implements Runnable {
+
     private Socket cliente;
     private String ipCliente;
-    private Set<String> ipsAtivos;
-    private Map<String, String> baseDeDados;
+    private Map<String, RespostaClimatica> baseDeDados;
 
-    public ServerThread(Socket cliente, String ipCliente, Set<String> ipsAtivos, Map<String, String> baseDeDados) {
+    public ServerThread(Socket cliente, String ipCliente, Map<String, RespostaClimatica> baseDeDados) {
         this.cliente = cliente;
         this.ipCliente = ipCliente;
-        this.ipsAtivos = ipsAtivos;
         this.baseDeDados = baseDeDados;
     }
 
     @Override
     public void run() {
+
+        BlockingQueue<String> fila = new LinkedBlockingQueue<>();
+
         try (
-            Scanner leitor = new Scanner(cliente.getInputStream());
+            BufferedReader leitor = new BufferedReader(new InputStreamReader(cliente.getInputStream()));
             PrintStream escritor = new PrintStream(cliente.getOutputStream(), true)
         ) {
-            escritor.println("Bem-vindo ao Servidor Climático! Perguntas disponíveis: CLIMA, TEMPERATURA, UMIDADE, VENTO.");
 
-            while (leitor.hasNextLine()) {
-                String mensagem = leitor.nextLine().toUpperCase().trim();
-                System.out.println("Cliente " + ipCliente + " enviou: " + mensagem);
+            // Identificação
+            escritor.println("Digite seu nome:");
+            String nomeCliente = leitor.readLine();
 
-                if (mensagem.equals("SAIR")) {
-                    escritor.println("Desconectando... Até logo!");
-                    break;
+            System.out.println("Cliente conectado: " + nomeCliente + " (" + ipCliente + ")");
+
+            escritor.println("Bem-vindo, " + nomeCliente +
+                    "! Perguntas: CLIMA, TEMPERATURA, UMIDADE, VENTO. Digite SAIR para encerrar.");
+
+            Thread leituraThread = new Thread(() -> {
+                try {
+                    String msg;
+
+                    while ((msg = leitor.readLine()) != null) {
+                        msg = msg.toUpperCase().trim();
+
+                        System.out.println(nomeCliente + " enviou: " + msg);
+
+                        if (msg.equals("SAIR")) {
+                            fila.put("Desconectando... Até logo!");
+                            cliente.close();
+                            break;
+                        }
+
+                        RespostaClimatica resposta = baseDeDados.get(msg);
+
+                        if (resposta != null) {
+                            fila.put(resposta.responder());
+                        } else {
+                            fila.put("Comando inválido.");
+                        }
+                    }
+
+                } catch (Exception e) {
+                    System.err.println("Erro na leitura do cliente " + nomeCliente);
                 }
+            });
 
-                String resposta = baseDeDados.get(mensagem);
-
-                if (resposta != null) {
-                    escritor.println(resposta);
-                } else {
-                    escritor.println("Pergunta não reconhecida. Tente: CLIMA, TEMPERATURA, UMIDADE, VENTO ou SAIR.");
+            Thread escritaThread = new Thread(() -> {
+                try {
+                    while (!cliente.isClosed()) {
+                        String resposta = fila.take();
+                        escritor.println(resposta);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Erro na escrita do cliente " + nomeCliente);
                 }
-            }
-        } catch (IOException e) {
-            System.err.println("Erro na comunicação com o cliente " + ipCliente);
+            });
+
+            leituraThread.start();
+            escritaThread.start();
+
+            leituraThread.join();
+            escritaThread.join();
+
+        } catch (Exception e) {
+            System.err.println("Erro no cliente " + ipCliente);
         } finally {
             try {
-                ipsAtivos.remove(ipCliente);
-                cliente.close();
+                if (!cliente.isClosed()) {
+                    cliente.close();
+                }
                 System.out.println("Cliente " + ipCliente + " desconectado.");
-            } catch (IOException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }

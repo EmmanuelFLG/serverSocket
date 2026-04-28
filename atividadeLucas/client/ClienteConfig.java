@@ -21,7 +21,7 @@ public class ClienteConfig {
 
             System.out.println("Conectado ao servidor.");
 
-            // Inicia a thread que apenas escuta o servidor
+    
             Thread threadRecepcao = new Thread(this::receberMsg);
             threadRecepcao.start();
             
@@ -47,10 +47,6 @@ public class ClienteConfig {
                 }
             }
 
-            // A MÁGICA ACONTECE AQUI:
-            // Se o loop do Scanner acabou e nós não pedimos para sair (conectado ainda é
-            // true),
-            // significa que o servidor derrubou a conexão do nada.
             if (conectado) {
                 System.out.println("\n[!] O Servidor foi encerrado abruptamente.");
             }
@@ -74,7 +70,7 @@ public class ClienteConfig {
             String mensagem = teclado.nextLine();
 
             if (!conectado)
-                break; // Para o loop se o servidor recusou a conexão
+                break; 
 
             escritor.println(mensagem);
 
