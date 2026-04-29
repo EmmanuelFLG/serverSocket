@@ -6,10 +6,12 @@ import java.net.Socket;
 import java.util.Scanner;
 
 public class ClienteConfig {
+
     private Socket socketCliente;
     private Scanner leitorServidor;
     private PrintStream escritor;
     private Scanner teclado;
+
     private volatile boolean conectado = true;
 
     public void abrirConexao(String ip, int porta) {
@@ -21,15 +23,14 @@ public class ClienteConfig {
 
             System.out.println("Conectado ao servidor.");
 
-    
             Thread threadRecepcao = new Thread(this::receberMsg);
+            Thread threadEnvio = new Thread(this::enviarMsg);
+
             threadRecepcao.start();
-            
-            enviarMsg();
+            threadEnvio.start();
 
         } catch (IOException e) {
-            System.err.println("Não foi possível conectar ao servidor: " + e.getMessage());
-        } finally {
+            System.err.println("Erro ao conectar: " + e.getMessage());
             fecharConexao();
         }
     }
@@ -38,66 +39,71 @@ public class ClienteConfig {
         try {
             while (conectado && leitorServidor.hasNextLine()) {
                 String mensagem = leitorServidor.nextLine();
+
                 System.out.println("\n>> Servidor: " + mensagem);
-                System.out.print("> "); // Mantém a setinha para você continuar digitando
+                System.out.print("> ");
 
                 if (mensagem.startsWith("CONEXÃO RECUSADA")) {
-                    conectado = false;
+                    System.out.println("Servidor recusou a conexão.");
                     break;
                 }
             }
 
             if (conectado) {
-                System.out.println("\n[!] O Servidor foi encerrado abruptamente.");
+                System.out.println("\n[!] Servidor desconectado.");
             }
 
         } catch (Exception e) {
-            // Só vai cair aqui se for um erro muito bizarro de memória ou thread
             if (conectado) {
-                System.out.println("\n[!] Erro crítico na conexão: " + e.getMessage());
+                System.out.println("\n[!] Erro na recepção: " + e.getMessage());
             }
         } finally {
-            if (conectado) {
-                conectado = false;
-                System.out.println("Encerrando o cliente...");
-                System.exit(0);
-            }
+            fecharConexao();
         }
     }
 
     private void enviarMsg() {
-        while (conectado && teclado.hasNextLine()) {
-            String mensagem = teclado.nextLine();
+        try {
+            while (conectado && teclado.hasNextLine()) {
+                String mensagem = teclado.nextLine();
 
-            if (!conectado)
-                break; 
+                if (!conectado) break;
 
-            escritor.println(mensagem);
+                escritor.println(mensagem);
 
-            if (mensagem.equalsIgnoreCase("SAIR")) {
-                conectado = false; // Sinaliza para a thread de recepção parar
-                break;
+                if (mensagem.equalsIgnoreCase("SAIR")) {
+                    System.out.println("Encerrando conexão...");
+                    break;
+                }
             }
+        } catch (Exception e) {
+            if (conectado) {
+                System.out.println("[!] Erro no envio: " + e.getMessage());
+            }
+        } finally {
+            fecharConexao();
         }
     }
 
-    private void fecharConexao() {
+    private synchronized void fecharConexao() {
+        if (!conectado) return; 
+
+        conectado = false;
+
         try {
             System.out.println("Encerrando cliente...");
-            conectado = false;
 
-            if (teclado != null)
-                teclado.close();
-            if (leitorServidor != null)
-                leitorServidor.close();
-            if (escritor != null)
-                escritor.close();
+            if (teclado != null) teclado.close();
+            if (leitorServidor != null) leitorServidor.close();
+            if (escritor != null) escritor.close();
             if (socketCliente != null && !socketCliente.isClosed()) {
                 socketCliente.close();
             }
-            System.out.println("Cliente encerrado com sucesso.");
+
+            System.out.println("Cliente encerrado.");
+
         } catch (IOException e) {
-            e.printStackTrace();
+            System.out.println("Erro ao fechar conexão: " + e.getMessage());
         }
     }
 }
