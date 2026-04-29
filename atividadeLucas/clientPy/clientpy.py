@@ -12,6 +12,18 @@ def receber(sock):
                 print("\nServidor desconectou")
                 break
             print("\nServidor:", msg.strip())
+            print("> ", end="", flush=True)
+        except:
+            break
+
+def enviar(sock):
+    while True:
+        try:
+            msg = input("> ")
+            sock.sendall((msg + "\n").encode())
+
+            if msg.upper() == "SAIR":
+                break
         except:
             break
 
@@ -21,20 +33,18 @@ def main():
 
     print("Conectado")
 
-    t = threading.Thread(target=receber, args=(cliente,))
-    t.daemon = True
-    t.start()
+    t_receber = threading.Thread(target=receber, args=(cliente,))
+    t_receber.daemon = True
+    t_receber.start()
 
-    try:
-        while True:
-            msg = input("> ")
-            cliente.sendall((msg + "\n").encode())
+   
+    t_enviar = threading.Thread(target=enviar, args=(cliente,))
+    t_enviar.start()
 
-            if msg.upper() == "SAIR":
-                break
-    finally:
-        cliente.close()
-        print("Fim")
+    t_enviar.join()
+
+    cliente.close()
+    print("Fim")
 
 if __name__ == "__main__":
     main()
