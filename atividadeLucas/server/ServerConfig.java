@@ -1,48 +1,53 @@
 package atividadeLucas.server;
 
-import java.io.IOException;
+import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Map;
 import java.util.HashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Map;
+import java.util.concurrent.Semaphore;
 
 public class ServerConfig {
-    private ServerSocket servidor;
-    private ExecutorService pool;
 
+    private Semaphore limiteClientes = new Semaphore(5);
     private Map<String, RespostaClimatica> baseDeDados;
 
-    public void startServer(int porta) {
-        pool = Executors.newFixedThreadPool(5);
+    public void start(int porta) {
         inicializarBaseDeDados();
 
-        try {
-            servidor = new ServerSocket(porta);
-            System.out.println("Servidor Climático operando na porta " + porta);
+        try (ServerSocket server = new ServerSocket(porta)) {
+            System.out.println("Servidor rodando na porta " + porta);
 
             while (true) {
-                Socket cliente = servidor.accept();
+                Socket cliente = server.accept();
                 String ipCliente = cliente.getInetAddress().getHostAddress();
 
-                System.out.println("Cliente " + ipCliente + " conectado.");
+                if (!limiteClientes.tryAcquire()) {
+                    PrintStream out = new PrintStream(cliente.getOutputStream(), true);
+                    out.println("Servidor cheio");
+                    cliente.close();
+                    continue;
+                }
 
-             
-                pool.execute(new ServerThread(cliente, ipCliente, baseDeDados));
+                new Thread(() -> {
+                    try {
+                        new ServerThread(cliente, ipCliente, baseDeDados).run();
+                    } finally {
+                        limiteClientes.release();
+                    }
+                }).start();
             }
-        } catch (IOException e) {
-            System.err.println("Erro ao iniciar o servidor: " + e.getMessage());
+
+        } catch (Exception e) {
+            System.out.println("Erro no servidor: " + e.getMessage());
         }
     }
 
     private void inicializarBaseDeDados() {
         baseDeDados = new HashMap<>();
-
         baseDeDados.put("CLIMA", new ClimaResposta());
         baseDeDados.put("TEMPERATURA", new TemperaturaResposta());
         baseDeDados.put("UMIDADE", new UmidadeResposta());
         baseDeDados.put("VENTO", new VentoResposta());
     }
-
 }
