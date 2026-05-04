@@ -30,7 +30,6 @@ public class ServerThread implements Runnable {
             PrintStream escritor = new PrintStream(cliente.getOutputStream(), true)
         ) {
 
-    
             escritor.println("Digite seu nome:");
             String nomeCliente = leitor.readLine();
 
@@ -49,10 +48,8 @@ public class ServerThread implements Runnable {
                         System.out.println(nomeCliente + " enviou: " + msg);
 
                         if (msg.equals("SAIR")) {
-                            System.out.println("Cliente " + nomeCliente + " solicitou desconexão.");
-
                             fila.put("Desconectando... Até logo!");
-                            fila.put("__FIM__"); 
+                            cliente.close();
                             break;
                         }
 
@@ -72,11 +69,8 @@ public class ServerThread implements Runnable {
 
             Thread escritaThread = new Thread(() -> {
                 try {
-                    while (true) {
+                    while (!cliente.isClosed()) {
                         String resposta = fila.take();
-
-                        if (resposta.equals("__FIM__")) break;
-
                         escritor.println(resposta);
                     }
                 } catch (Exception e) {
@@ -91,10 +85,10 @@ public class ServerThread implements Runnable {
             escritaThread.join();
 
         } catch (Exception e) {
-            System.err.println("Erro no cliente " + ipCliente + ": " + e.getMessage());
+            System.err.println("Erro no cliente " + ipCliente);
         } finally {
             try {
-                if (cliente != null && !cliente.isClosed()) {
+                if (!cliente.isClosed()) {
                     cliente.close();
                 }
                 System.out.println("Cliente " + ipCliente + " desconectado.");
